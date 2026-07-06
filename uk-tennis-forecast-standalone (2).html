@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>UK Tennis Forecast — Best Day This Week</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pine:#132D26; --pine-deep:#0B1F1A; --chalk:#F4F1E8;
+    --ball:#D7E655; --ball-dim:#8C9A3E;
+    --line:rgba(244,241,232,0.14);
+    --bad:#C05C4A; --mid:#C9A227; --good:#8FB33E; --great:#D7E655;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--pine-deep);color:var(--chalk);font-family:'IBM Plex Sans',sans-serif;min-height:100%;}
+  .app{max-width:640px;margin:0 auto;padding:18px 16px 40px;}
+
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--ball);margin-bottom:4px;}
+  h1{font-family:'Archivo Black',sans-serif;font-size:clamp(20px,5vw,28px);margin:0 0 6px;line-height:1.1;}
+  .subtitle{font-size:12.5px;color:rgba(244,241,232,0.65);line-height:1.5;margin-bottom:18px;}
+
+  .picker{display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap;}
+  select{
+    flex:1; min-width:180px;
+    font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600;
+    background:var(--pine); color:var(--chalk);
+    border:1px solid var(--line); border-radius:8px;
+    padding:12px 14px; appearance:none;
+  }
+  .go-btn{
+    font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:700;
+    background:var(--ball); color:var(--pine-deep);
+    border:none; border-radius:8px; padding:12px 18px; cursor:pointer;
+  }
+  .go-btn:disabled{opacity:0.5;}
+
+  .status{font-family:'IBM Plex Mono',monospace; font-size:12px; color:rgba(244,241,232,0.6); padding:14px; text-align:center; display:none;}
+  .status.visible{display:block;}
+  .status.error{color:#E2897A;}
+
+  .hero{
+    display:none;
+    background:linear-gradient(135deg, rgba(215,230,85,0.14), rgba(215,230,85,0.03));
+    border:1px solid rgba(215,230,85,0.35);
+    border-radius:14px; padding:16px 18px; margin-bottom:16px;
+  }
+  .hero.visible{display:block;}
+  .hero-label{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ball);margin-bottom:4px;}
+  .hero-day{font-family:'Archivo Black',sans-serif;font-size:22px;}
+  .hero-sub{font-size:12px;color:rgba(244,241,232,0.7);margin-top:4px;}
+
+  .cards{display:flex; flex-direction:column; gap:10px;}
+  .card{background:var(--pine); border:1px solid var(--line); border-radius:10px; padding:12px 14px; display:flex; align-items:center; gap:12px;}
+  .card .rank{font-family:'Archivo Black',sans-serif; font-size:15px; width:26px; text-align:center; color:rgba(244,241,232,0.4); flex-shrink:0;}
+  .card .score-dot{
+    width:44px; height:44px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:13px; color:var(--pine-deep);
+  }
+  .card .info{flex:1; min-width:0;}
+  .card .day-name{font-family:'Archivo Black',sans-serif; font-size:14.5px;}
+  .card .day-date{font-family:'IBM Plex Mono',monospace; font-size:10px; color:rgba(244,241,232,0.5); margin-bottom:4px;}
+  .card .metrics{display:flex; gap:10px; flex-wrap:wrap; font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(244,241,232,0.75);}
+  .card .metrics span{white-space:nowrap;}
+  .tags{display:flex; gap:5px; flex-wrap:wrap; margin-top:5px;}
+  .tag{font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 7px; border-radius:10px; border:1px solid var(--line); color:rgba(244,241,232,0.75);}
+  .tag.warn{border-color:rgba(224,110,90,0.5); color:#E2897A;}
+  .tag.great{border-color:rgba(215,230,85,0.5); color:var(--ball);}
+
+  .method{font-size:11px; line-height:1.6; color:rgba(244,241,232,0.5); border-top:1px solid var(--line); margin-top:22px; padding-top:14px;}
+  .method b{color:rgba(244,241,232,0.75);}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="eyebrow">Live 7-day look-ahead</div>
+  <h1>Best day to play this week</h1>
+  <div class="subtitle">Pick a city — pulls the current forecast straight from Open-Meteo and ranks the next 7 days by daytime (8am–8pm) wind, rain, and temperature for outdoor tennis.</div>
+
+  <div class="picker">
+    <select id="citySelect"></select>
+    <button class="go-btn" id="goBtn">Rank this week</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="hero" id="hero">
+    <div class="hero-label">Best day to play</div>
+    <div class="hero-day" id="heroDay">—</div>
+    <div class="hero-sub" id="heroSub">—</div>
+  </div>
+  <div class="cards" id="cards"></div>
+
+  <div class="method">
+    <b>How this works:</b> this page calls the free, public Open-Meteo forecast API directly from your browser — no API key, no server in between. For each of the next 7 days it looks only at the 8am–7pm window, scoring gusty wind, rain hours, and too-hot (&gt;27°C) or too-cold (&lt;10°C) temperatures. It's a live forecast, not a saved dataset, so later days in the week can still shift as the date gets closer — same as any weather app. Forecast source: <a href="https://open-meteo.com" style="color:var(--ball)">open-meteo.com</a>.
+  </div>
+</div>
+
+<script>
+const CITIES = [
+  {n:"Exeter",lat:50.72,lon:-3.53},
+  {n:"London",lat:51.51,lon:-0.13},{n:"Birmingham",lat:52.48,lon:-1.90},{n:"Manchester",lat:53.48,lon:-2.24},
+  {n:"Leeds",lat:53.80,lon:-1.55},{n:"Glasgow",lat:55.86,lon:-4.25},{n:"Edinburgh",lat:55.95,lon:-3.19},
+  {n:"Liverpool",lat:53.41,lon:-2.98},{n:"Bristol",lat:51.45,lon:-2.59},{n:"Newcastle",lat:54.98,lon:-1.61},
+  {n:"Sheffield",lat:53.38,lon:-1.47},{n:"Cardiff",lat:51.48,lon:-3.18},{n:"Belfast",lat:54.60,lon:-5.93},
+  {n:"Nottingham",lat:52.95,lon:-1.15},{n:"Southampton",lat:50.91,lon:-1.40},
+  {n:"Norwich",lat:52.63,lon:1.30},{n:"Aberdeen",lat:57.15,lon:-2.09},{n:"Plymouth",lat:50.37,lon:-4.14},
+  {n:"Brighton",lat:50.82,lon:-0.14},{n:"York",lat:53.96,lon:-1.08},{n:"Oxford",lat:51.75,lon:-1.26},
+  {n:"Cambridge",lat:52.20,lon:0.12},{n:"Leicester",lat:52.64,lon:-1.13},{n:"Coventry",lat:52.41,lon:-1.51},
+  {n:"Hull",lat:53.74,lon:-0.34},{n:"Swansea",lat:51.62,lon:-3.94},{n:"Inverness",lat:57.48,lon:-4.22},
+  {n:"Derry",lat:54.99,lon:-7.31}
+];
+
+const citySelect = document.getElementById('citySelect');
+CITIES.forEach(c=>{
+  const opt = document.createElement('option');
+  opt.value = c.n; opt.textContent = c.n;
+  citySelect.appendChild(opt);
+});
+citySelect.value = "Exeter";
+
+const goBtn = document.getElementById('goBtn');
+const statusEl = document.getElementById('status');
+const heroEl = document.getElementById('hero');
+const cardsEl = document.getElementById('cards');
+
+function setStatus(msg, isError){ statusEl.textContent = msg; statusEl.className = 'status visible' + (isError ? ' error' : ''); }
+function clearStatus(){ statusEl.className = 'status'; }
+
+function scoreDay(d){
+  let score = 100;
+  const tmax = d.tmax, tmin = d.tmin, wind = d.wind, gust = d.gust, rainHours = d.rain_hours, rainChance = d.rain_chance;
+
+  if(tmax < 8) score -= (8 - tmax) * 6;
+  else if(tmax < 14) score -= (14 - tmax) * 2.5;
+  if(tmax > 28) score -= (tmax - 28) * 5;
+  else if(tmax > 24) score -= (tmax - 24) * 1.5;
+  if(tmin < 3) score -= (3 - tmin) * 1.2;
+
+  if(gust > 20) score -= (gust - 20) * 2.2;
+  else if(wind > 12) score -= (wind - 12) * 1.2;
+
+  score -= rainHours * 9;
+  score -= Math.max(0, rainChance - 30) * 0.35;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function tagsFor(d, score){
+  const tags = [];
+  if(d.tmax < 10) tags.push({t:'Too cold', warn:true});
+  if(d.tmax > 27) tags.push({t:'Too hot', warn:true});
+  if(d.gust > 25 || d.wind > 18) tags.push({t:'Too windy', warn:true});
+  if(d.rain_hours >= 2 || d.rain_chance >= 60) tags.push({t:'Rainy', warn:true});
+  if(tags.length===0 && score >= 70) tags.push({t:'Great for tennis', warn:false, great:true});
+  return tags;
+}
+
+function colorFor(score){
+  if(score >= 70) return 'var(--great)';
+  if(score >= 50) return 'var(--good)';
+  if(score >= 30) return 'var(--mid)';
+  return 'var(--bad)';
+}
+
+function dayNameFrom(dateStr){
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-GB', { weekday: 'short' });
+}
+
+async function fetchForecast(city){
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}` +
+    `&daily=temperature_2m_max,temperature_2m_min` +
+    `&hourly=precipitation,wind_speed_10m,wind_gusts_10m,precipitation_probability` +
+    `&timezone=Europe%2FLondon&forecast_days=7&wind_speed_unit=mph&precipitation_unit=mm`;
+
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Weather service returned ' + res.status);
+  const data = await res.json();
+
+  const dailyDates = data.daily.time;
+  const tmaxArr = data.daily.temperature_2m_max;
+  const tminArr = data.daily.temperature_2m_min;
+
+  const hTime = data.hourly.time;
+  const hWind = data.hourly.wind_speed_10m;
+  const hGust = data.hourly.wind_gusts_10m;
+  const hPrecip = data.hourly.precipitation;
+  const hPrecipProb = data.hourly.precipitation_probability;
+
+  return dailyDates.map((date, i) => {
+    let windSum=0, windCount=0, gustMax=0, rainHours=0, rainProbMax=0;
+    for(let h=0; h<hTime.length; h++){
+      if(!hTime[h].startsWith(date)) continue;
+      const hour = Number(hTime[h].slice(11,13));
+      if(hour < 8 || hour > 19) continue;
+      windSum += hWind[h]; windCount++;
+      if(hGust[h] > gustMax) gustMax = hGust[h];
+      if(hPrecip[h] > 0.1) rainHours++;
+      if(hPrecipProb[h] > rainProbMax) rainProbMax = hPrecipProb[h];
+    }
+    return {
+      date,
+      day: dayNameFrom(date),
+      tmax: Math.round(tmaxArr[i]),
+      tmin: Math.round(tminArr[i]),
+      wind: Math.round(windCount ? windSum/windCount : 0),
+      gust: Math.round(gustMax),
+      rain_chance: Math.round(rainProbMax),
+      rain_hours: rainHours
+    };
+  });
+}
+
+function render(days, city){
+  const scored = days.map(d => ({...d, score: scoreDay(d)}));
+  const sorted = [...scored].sort((a,b) => b.score - a.score);
+
+  const best = sorted[0];
+  document.getElementById('heroDay').textContent = `${best.day} ${best.date} — ${city}`;
+  document.getElementById('heroSub').textContent =
+    `${best.tmax}°C max · ${best.wind}mph wind (gusts ${best.gust}mph) · ${best.rain_hours}h rain expected`;
+  heroEl.classList.add('visible');
+
+  cardsEl.innerHTML = '';
+  sorted.forEach((d, i) => {
+    const tags = tagsFor(d, d.score);
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="rank">${i+1}</div>
+      <div class="score-dot" style="background:${colorFor(d.score)}">${d.score}</div>
+      <div class="info">
+        <div class="day-name">${d.day}</div>
+        <div class="day-date">${d.date}</div>
+        <div class="metrics">
+          <span>🌡 ${d.tmin}–${d.tmax}°C</span>
+          <span>💨 ${d.wind}mph (gust ${d.gust})</span>
+          <span>🌧 ${d.rain_hours}h / ${d.rain_chance}%</span>
+        </div>
+        <div class="tags">${tags.map(t=>`<span class="tag ${t.warn?'warn':''} ${t.great?'great':''}">${t.t}</span>`).join('')}</div>
+      </div>
+    `;
+    cardsEl.appendChild(card);
+  });
+}
+
+async function runForecast(){
+  const cityName = citySelect.value;
+  if(!cityName){ setStatus('Pick a city first.', true); return; }
+  const city = CITIES.find(c => c.n === cityName);
+  heroEl.classList.remove('visible');
+  cardsEl.innerHTML = '';
+  goBtn.disabled = true;
+  setStatus(`Pulling this week's forecast for ${cityName}…`, false);
+  try{
+    const days = await fetchForecast(city);
+    clearStatus();
+    render(days, cityName);
+  } catch(err){
+    setStatus(`Couldn't get the forecast for ${cityName} (${err.message}). Check your internet connection and try again.`, true);
+  } finally {
+    goBtn.disabled = false;
+  }
+}
+
+goBtn.addEventListener('click', runForecast);
+runForecast();
+</script>
+</body>
+</html>
