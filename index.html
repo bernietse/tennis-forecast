@@ -71,6 +71,64 @@
 
   .method{font-size:11px; line-height:1.6; color:rgba(244,241,232,0.5); border-top:1px solid var(--line); margin-top:22px; padding-top:14px;}
   .method b{color:rgba(244,241,232,0.75);}
+
+  .mode-toggle{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:16px; width:fit-content;}
+  .mode-toggle button{
+    font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600;
+    padding:9px 14px; background:var(--pine); border:none; color:rgba(244,241,232,0.6);
+    border-right:1px solid var(--line); cursor:pointer;
+  }
+  .mode-toggle button:last-child{border-right:none;}
+  .mode-toggle button.active{background:var(--ball); color:var(--pine-deep);}
+
+  .map-container{position:relative; display:none;}
+  .map-container.visible{display:block;}
+  #mapsvg{width:100%; height:auto; display:block; background:radial-gradient(ellipse at 50% 30%, #0F2230 0%, #0A1620 70%); border-radius:12px; touch-action:none; overflow:hidden;}
+  .land{fill:#3E6B54; stroke:#C9D9A8; stroke-width:2; stroke-opacity:0.55;}
+  .marker-hit{fill:transparent; cursor:pointer;}
+  .marker-dot{pointer-events:none; stroke:rgba(244,241,232,0.55); stroke-width:1;}
+  .marker-dot.selected{stroke:var(--chalk); stroke-width:2.2;}
+  .marker-label{pointer-events:none; font-family:'IBM Plex Mono',monospace; fill:rgba(244,241,232,0.85); font-size:9px; text-anchor:middle; paint-order:stroke; stroke:var(--pine-deep); stroke-width:2.5px;}
+
+  .zoom-controls{
+    position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    display:flex; flex-direction:column; gap:6px; z-index:5;
+  }
+  .zoom-controls button{
+    width:38px; height:38px; border-radius:8px;
+    background:rgba(11,31,26,0.9); border:1px solid var(--line); color:var(--chalk);
+    font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:700;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  .zoom-controls button:active{background:rgba(215,230,85,0.25);}
+  .zoom-controls .reset-btn{font-size:12px;}
+
+  .map-legend{
+    position:absolute; top:12px; right:12px;
+    background:rgba(11,31,26,0.88); border:1px solid var(--line); border-radius:8px;
+    padding:8px 10px; width:140px; backdrop-filter:blur(3px);
+  }
+  .map-legend h3{font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ball); margin:0 0 6px;}
+  .map-legend-gradient{height:10px; border-radius:2px; margin-bottom:4px; background:linear-gradient(90deg,#5B3A34 0%, #A9633C 25%, #C9A227 50%, #9CB53A 75%, #D7E655 100%);}
+  .map-legend-labels{display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:8.5px; color:rgba(244,241,232,0.55);}
+
+  .map-status{
+    position:absolute; top:12px; left:12px;
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:rgba(244,241,232,0.7);
+    background:rgba(11,31,26,0.85); padding:6px 10px; border-radius:6px;
+  }
+
+  .map-sheet{
+    position:absolute; left:12px; right:12px; bottom:12px;
+    background:rgba(11,31,26,0.96); border:1px solid var(--line); border-radius:12px;
+    padding:14px 16px; max-height:56%; overflow-y:auto;
+    transform:translateY(140%); transition:transform .28s ease;
+  }
+  .map-sheet.visible{transform:translateY(0);}
+  .map-sheet .close-x{position:absolute; top:10px; right:12px; background:none; border:none; color:rgba(244,241,232,0.5); font-size:16px; cursor:pointer; line-height:1;}
+  .map-sheet .sheet-title{font-family:'Archivo Black',sans-serif; font-size:16px; margin-bottom:10px; padding-right:20px;}
+  .map-sheet .cards{gap:8px;}
+  .map-sheet .card{padding:9px 11px;}
 </style>
 </head>
 <body>
@@ -79,21 +137,48 @@
   <h1>Best day to play this week</h1>
   <div class="subtitle">Pick a city — pulls the current forecast straight from Open-Meteo and ranks the next 7 days by daytime (8am–8pm) wind, rain, and temperature for outdoor tennis.</div>
 
-  <div class="picker">
-    <select id="citySelect"></select>
-    <button class="go-btn" id="goBtn">Rank this week</button>
+  <div class="mode-toggle" id="modeToggle">
+    <button data-mode="list" class="active">📋 List mode</button>
+    <button data-mode="map">🗺 Map mode</button>
   </div>
 
-  <div class="status" id="status"></div>
-  <div class="hero" id="hero">
-    <div class="hero-label">Best day to play</div>
-    <div class="hero-day" id="heroDay">—</div>
-    <div class="hero-sub" id="heroSub">—</div>
+  <div id="listView">
+    <div class="picker">
+      <select id="citySelect"></select>
+      <button class="go-btn" id="goBtn">Rank this week</button>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div class="hero" id="hero">
+      <div class="hero-label">Best day to play</div>
+      <div class="hero-day" id="heroDay">—</div>
+      <div class="hero-sub" id="heroSub">—</div>
+    </div>
+    <div class="cards" id="cards"></div>
   </div>
-  <div class="cards" id="cards"></div>
+
+  <div class="map-container" id="mapView">
+    <svg id="mapsvg" viewBox="0 0 600 950" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="zoom-controls">
+      <button id="zoomInBtn">+</button>
+      <button id="zoomResetBtn" class="reset-btn">⟲</button>
+      <button id="zoomOutBtn">−</button>
+    </div>
+    <div class="map-legend">
+      <h3>7-day overall</h3>
+      <div class="map-legend-gradient"></div>
+      <div class="map-legend-labels"><span>Poor</span><span>Prime</span></div>
+    </div>
+    <div class="map-status" id="mapStatus">Loading forecasts…</div>
+    <div class="map-sheet" id="mapSheet">
+      <button class="close-x" id="mapSheetClose">✕</button>
+      <div class="sheet-title" id="mapSheetTitle">—</div>
+      <div class="cards" id="mapSheetCards"></div>
+    </div>
+  </div>
 
   <div class="method">
-    <b>How this works:</b> this page calls the free, public Open-Meteo forecast API directly from your browser — no API key, no server in between. For each of the next 7 days it looks only at the 8am–7pm window, scoring gusty wind, rain hours, and too-hot (&gt;27°C) or too-cold (&lt;10°C) temperatures. It's a live forecast, not a saved dataset, so later days in the week can still shift as the date gets closer — same as any weather app. Forecast source: <a href="https://open-meteo.com" style="color:var(--ball)">open-meteo.com</a>.
+    <b>How this works:</b> this page calls the free, public Open-Meteo forecast API directly from your browser — no API key, no server in between. For each of the next 7 days it looks only at the 8am–7pm window, scoring gusty wind, rain hours, and too-hot (&gt;27°C) or too-cold (&lt;10°C) temperatures. It's a live forecast, not a saved dataset, so later days in the week can still shift as the date gets closer — same as any weather app. Map mode's dot colour is each city's <b>average</b> score across the coming week; tap a dot for the day-by-day ranking. Forecast source: <a href="https://open-meteo.com" style="color:var(--ball)">open-meteo.com</a>.
   </div>
 </div>
 
@@ -267,6 +352,255 @@ async function runForecast(){
 
 goBtn.addEventListener('click', runForecast);
 runForecast();
+
+// ================= MAP MODE =================
+const COAST_GB = [[1.4,51.1],[0.7,50.9],[0.0,50.77],[-0.9,50.72],[-1.4,50.72],[-2.0,50.62],[-2.9,50.6],[-3.6,50.22],[-4.15,50.35],[-4.5,50.1],[-5.2,49.96],[-5.65,50.05],[-5.5,50.22],[-4.9,50.9],[-4.3,51.15],[-3.5,51.22],[-3.0,51.35],[-3.15,51.55],[-3.95,51.6],[-4.65,51.7],[-5.3,51.72],[-4.9,52.0],[-4.3,52.42],[-4.65,52.83],[-4.4,53.28],[-3.8,53.35],[-3.3,53.4],[-3.0,53.45],[-3.05,53.85],[-2.9,54.1],[-3.15,54.6],[-3.6,54.85],[-4.4,54.9],[-4.95,54.85],[-4.85,55.35],[-5.05,55.5],[-5.75,55.28],[-5.55,55.68],[-5.3,55.9],[-5.6,56.15],[-5.45,56.42],[-5.2,56.7],[-5.35,56.8],[-6.2,56.65],[-5.85,57.0],[-5.65,57.35],[-5.3,57.7],[-5.05,58.15],[-4.7,58.55],[-3.9,58.62],[-3.05,58.64],[-3.05,58.4],[-3.5,58.0],[-4.0,57.6],[-4.25,57.5],[-3.5,57.62],[-2.85,57.68],[-2.0,57.68],[-1.8,57.4],[-2.08,57.15],[-2.2,56.85],[-2.65,56.55],[-2.9,56.45],[-2.95,56.15],[-3.2,55.98],[-2.6,55.98],[-2.0,55.85],[-1.85,55.5],[-1.6,55.2],[-1.4,55.0],[-1.35,54.65],[-1.15,54.55],[-0.6,54.55],[-0.15,54.1],[0.0,53.6],[0.1,53.2],[0.15,52.9],[0.35,52.85],[0.9,52.8],[1.5,52.75],[1.75,52.6],[1.68,52.2],[1.35,51.95],[1.2,51.85],[0.9,51.7],[0.7,51.5],[1.4,51.1]];
+const COAST_NI = [[-5.9,54.65],[-5.55,54.5],[-5.4,54.35],[-5.55,54.2],[-5.85,54.05],[-6.2,54.0],[-6.5,54.1],[-6.65,54.3],[-7.3,54.9],[-7.4,55.15],[-7.0,55.25],[-6.5,55.2],[-6.05,55.0],[-5.9,54.9],[-5.9,54.65]];
+
+const allPts = [...COAST_GB, ...COAST_NI, ...CITIES.map(c=>[c.lon,c.lat])];
+const meanLat = allPts.reduce((s,p)=>s+p[1],0)/allPts.length;
+const cosLat = Math.cos(meanLat*Math.PI/180);
+function rawProj(lon,lat){ return {x: lon*cosLat, y: -lat}; }
+const rawPts = allPts.map(p=>rawProj(p[0],p[1]));
+const bx0 = Math.min(...rawPts.map(p=>p.x)), bx1 = Math.max(...rawPts.map(p=>p.x));
+const by0 = Math.min(...rawPts.map(p=>p.y)), by1 = Math.max(...rawPts.map(p=>p.y));
+const VB_W = 600, VB_H = 950, PAD = 0.90;
+const mapScale = Math.min(VB_W/(bx1-bx0), VB_H/(by1-by0)) * PAD;
+const offX = (VB_W - (bx1-bx0)*mapScale)/2 - bx0*mapScale;
+const offY = (VB_H - (by1-by0)*mapScale)/2 - by0*mapScale;
+function project(lon,lat){ const r = rawProj(lon,lat); return {x: r.x*mapScale+offX, y: r.y*mapScale+offY}; }
+function polyPath(coords){ return coords.map(p=>project(p[0],p[1])).map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')+' Z'; }
+
+const svgns = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs){ const e = document.createElementNS(svgns, tag); for(const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+const mapSvg = document.getElementById('mapsvg');
+const zoomGroup = svgEl('g', {id:'zoomGroup'});
+mapSvg.appendChild(zoomGroup);
+zoomGroup.appendChild(svgEl('path',{d:polyPath(COAST_GB), class:'land'}));
+zoomGroup.appendChild(svgEl('path',{d:polyPath(COAST_NI), class:'land'}));
+
+function gradientColor(score){
+  const t = Math.max(0, Math.min(1, score/100));
+  const stops = [[0.00,[91,58,52]],[0.25,[169,99,60]],[0.50,[201,162,39]],[0.75,[156,181,58]],[1.00,[215,230,85]]];
+  for(let i=0;i<stops.length-1;i++){
+    const [t0,c0]=stops[i], [t1,c1]=stops[i+1];
+    if(t>=t0 && t<=t1){
+      const f=(t-t0)/(t1-t0);
+      return `rgb(${Math.round(c0[0]+f*(c1[0]-c0[0]))},${Math.round(c0[1]+f*(c1[1]-c0[1]))},${Math.round(c0[2]+f*(c1[2]-c0[2]))})`;
+    }
+  }
+  return `rgb(215,230,85)`;
+}
+
+const cityCache = {}; // name -> {days, avgScore} or {error:true}
+const markerParts = {};
+let mapSelected = null;
+let mapLoaded = false;
+
+CITIES.forEach(city=>{
+  const p = project(city.lon, city.lat);
+  const g = svgEl('g',{});
+  const dot = svgEl('circle',{cx:p.x,cy:p.y,r:7,class:'marker-dot',fill:'rgba(244,241,232,0.25)'});
+  const hit = svgEl('circle',{cx:p.x,cy:p.y,r:16,class:'marker-hit'});
+  const label = svgEl('text',{x:p.x,y:p.y-11,class:'marker-label'});
+  label.textContent = city.n;
+  g.appendChild(dot); g.appendChild(hit); g.appendChild(label);
+  zoomGroup.appendChild(g);
+  hit.addEventListener('click', ()=>selectMapCity(city.n));
+  markerParts[city.n] = {dot};
+});
+
+function renderMapSheet(cityName){
+  const data = cityCache[cityName];
+  const sheet = document.getElementById('mapSheet');
+  const cardsWrap = document.getElementById('mapSheetCards');
+  document.getElementById('mapSheetTitle').textContent = cityName;
+  if(!data || data.error){
+    cardsWrap.innerHTML = `<div class="status visible error" style="text-align:left;padding:8px 0;">Couldn't load this city's forecast. Try switching back to List mode and searching it there.</div>`;
+    sheet.classList.add('visible');
+    return;
+  }
+  const sorted = [...data.days].sort((a,b)=>b.score-a.score);
+  cardsWrap.innerHTML = '';
+  sorted.forEach((d,i)=>{
+    const tags = tagsFor(d, d.score);
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="rank">${i+1}</div>
+      <div class="score-dot" style="background:${colorFor(d.score)}">${d.score}</div>
+      <div class="info">
+        <div class="day-name">${d.day}</div>
+        <div class="day-date">${d.date}</div>
+        <div class="metrics">
+          <span>🌡 ${d.tmin}–${d.tmax}°C</span>
+          <span>💨 ${d.wind}mph (gust ${d.gust})</span>
+          <span>🌧 ${d.rain_hours}h / ${d.rain_chance}%</span>
+        </div>
+        <div class="tags">${tags.map(t=>`<span class="tag ${t.warn?'warn':''} ${t.great?'great':''}">${t.t}</span>`).join('')}</div>
+      </div>
+    `;
+    cardsWrap.appendChild(card);
+  });
+  sheet.classList.add('visible');
+}
+
+function selectMapCity(cityName){
+  mapSelected = cityName;
+  Object.entries(markerParts).forEach(([n,parts])=>parts.dot.classList.toggle('selected', n===cityName));
+  renderMapSheet(cityName);
+}
+
+document.getElementById('mapSheetClose').addEventListener('click', ()=>{
+  mapSelected = null;
+  document.getElementById('mapSheet').classList.remove('visible');
+  Object.values(markerParts).forEach(parts=>parts.dot.classList.remove('selected'));
+});
+
+async function loadAllForecasts(){
+  if(mapLoaded) return;
+  mapLoaded = true;
+  const mapStatus = document.getElementById('mapStatus');
+  let done = 0;
+  mapStatus.textContent = `Loading forecasts… 0/${CITIES.length}`;
+  await Promise.all(CITIES.map(city =>
+    fetchForecast(city).then(rawDays => {
+      const days = rawDays.map(d => ({...d, score: scoreDay(d)}));
+      const avgScore = Math.round(days.reduce((s,d)=>s+d.score,0)/days.length);
+      cityCache[city.n] = {days, avgScore};
+    }).catch(() => {
+      cityCache[city.n] = {error:true};
+    }).finally(() => {
+      done++;
+      mapStatus.textContent = `Loading forecasts… ${done}/${CITIES.length}`;
+      const data = cityCache[city.n];
+      const dot = markerParts[city.n].dot;
+      if(data && !data.error){
+        dot.setAttribute('fill', gradientColor(data.avgScore));
+        dot.setAttribute('r', 6 + (data.avgScore/100)*7);
+      } else {
+        dot.setAttribute('fill', 'rgba(224,110,90,0.6)');
+      }
+    })
+  ));
+  mapStatus.textContent = `Week overview · ${CITIES.length} cities · tap a dot for the day ranking`;
+}
+
+document.getElementById('modeToggle').addEventListener('click', e=>{
+  if(e.target.tagName !== 'BUTTON') return;
+  const mode = e.target.dataset.mode;
+  [...e.currentTarget.children].forEach(b=>b.classList.remove('active'));
+  e.target.classList.add('active');
+  document.getElementById('listView').style.display = mode === 'list' ? 'block' : 'none';
+  document.getElementById('mapView').classList.toggle('visible', mode === 'map');
+  if(mode === 'map') loadAllForecasts();
+});
+
+// ---------- zoom / pan ----------
+let zScale = 1, zTx = 0, zTy = 0;
+const Z_MIN = 1, Z_MAX = 7;
+
+function applyZoom(){
+  zoomGroup.setAttribute('transform', `translate(${zTx},${zTy}) scale(${zScale})`);
+}
+
+function viewBoxPoint(clientX, clientY){
+  const pt = mapSvg.createSVGPoint();
+  pt.x = clientX; pt.y = clientY;
+  const ctm = mapSvg.getScreenCTM().inverse();
+  return pt.matrixTransform(ctm);
+}
+
+function zoomAt(vbPoint, newScale){
+  newScale = Math.max(Z_MIN, Math.min(Z_MAX, newScale));
+  const wx = (vbPoint.x - zTx) / zScale;
+  const wy = (vbPoint.y - zTy) / zScale;
+  zTx = vbPoint.x - newScale * wx;
+  zTy = vbPoint.y - newScale * wy;
+  zScale = newScale;
+  clampPan();
+  applyZoom();
+}
+
+function clampPan(){
+  // keep the map roughly on-screen: limit translate so content doesn't drift away completely
+  const minTx = -(VB_W*zScale - VB_W) - VB_W*0.4, maxTx = VB_W*0.4;
+  const minTy = -(VB_H*zScale - VB_H) - VB_H*0.4, maxTy = VB_H*0.4;
+  zTx = Math.max(minTx, Math.min(maxTx, zTx));
+  zTy = Math.max(minTy, Math.min(maxTy, zTy));
+}
+
+mapSvg.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const p = viewBoxPoint(e.clientX, e.clientY);
+  const factor = e.deltaY < 0 ? 1.18 : 1/1.18;
+  zoomAt(p, zScale*factor);
+}, {passive:false});
+
+document.getElementById('zoomInBtn').addEventListener('click', ()=>{
+  zoomAt({x: VB_W/2, y: VB_H/2}, zScale*1.4);
+});
+document.getElementById('zoomOutBtn').addEventListener('click', ()=>{
+  zoomAt({x: VB_W/2, y: VB_H/2}, zScale/1.4);
+});
+document.getElementById('zoomResetBtn').addEventListener('click', ()=>{
+  zScale = 1; zTx = 0; zTy = 0; applyZoom();
+});
+
+// pointer-based pan + pinch (unified mouse/touch)
+const activePointers = new Map();
+let pinchStartDist = null, pinchStartScale = 1;
+let lastPan = null;
+
+mapSvg.addEventListener('pointerdown', e=>{
+  mapSvg.setPointerCapture(e.pointerId);
+  activePointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(activePointers.size === 1){
+    lastPan = viewBoxPoint(e.clientX, e.clientY);
+  } else if(activePointers.size === 2){
+    const pts = [...activePointers.values()];
+    pinchStartDist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    pinchStartScale = zScale;
+    lastPan = null;
+  }
+});
+
+mapSvg.addEventListener('pointermove', e=>{
+  if(!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+  if(activePointers.size === 1 && lastPan){
+    const p = viewBoxPoint(e.clientX, e.clientY);
+    zTx += (p.x - lastPan.x);
+    zTy += (p.y - lastPan.y);
+    lastPan = p;
+    clampPan();
+    applyZoom();
+  } else if(activePointers.size === 2){
+    const pts = [...activePointers.values()];
+    const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    const midX = (pts[0].x+pts[1].x)/2, midY = (pts[0].y+pts[1].y)/2;
+    const p = viewBoxPoint(midX, midY);
+    if(pinchStartDist){
+      zoomAt(p, pinchStartScale * (dist/pinchStartDist));
+    }
+  }
+});
+
+function releasePointer(e){
+  activePointers.delete(e.pointerId);
+  if(activePointers.size < 2) pinchStartDist = null;
+  if(activePointers.size === 1){
+    const remaining = [...activePointers.values()][0];
+    lastPan = viewBoxPoint(remaining.x, remaining.y);
+  } else if(activePointers.size === 0){
+    lastPan = null;
+  }
+}
+mapSvg.addEventListener('pointerup', releasePointer);
+mapSvg.addEventListener('pointercancel', releasePointer);
+mapSvg.addEventListener('pointerleave', e=>{ if(e.buttons===0) releasePointer(e); });
 </script>
 </body>
 </html>
