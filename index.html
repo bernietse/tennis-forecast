@@ -84,6 +84,9 @@
   .hour-tick{flex:1; height:26px; border-radius:3px; position:relative;}
   .hour-tick.in-window{outline:2px solid var(--chalk); outline-offset:-2px;}
   .hour-labels{display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:9px; color:rgba(244,241,232,0.45); margin-top:4px;}
+  .daylight-note{font-family:'IBM Plex Mono',monospace; font-size:10px; color:rgba(244,241,232,0.5); margin-top:10px;}
+  .scale-note{font-size:10px; line-height:1.5; margin-top:8px;}
+  .scale-note.dim{color:rgba(244,241,232,0.4);}
 
   .method{font-size:11px; line-height:1.6; color:rgba(244,241,232,0.5); border-top:1px solid var(--line); margin-top:22px; padding-top:14px;}
   .method b{color:rgba(244,241,232,0.75);}
@@ -152,7 +155,7 @@
 <div class="app">
   <div class="eyebrow">Live 7-day look-ahead</div>
   <h1>Best day to play this week</h1>
-  <div class="subtitle">Pick a city — pulls the current forecast straight from Open-Meteo and ranks the next 7 days by daytime (8am–8pm) wind, rain, and temperature for outdoor tennis.</div>
+  <div class="subtitle">Pick a city — pulls the current forecast straight from Open-Meteo and ranks the next 7 days by wind, rain, and temperature during that city's actual daylight hours (sunrise to sunset), which shift through the year.</div>
 
   <div class="mode-toggle" id="modeToggle">
     <button data-mode="list" class="active">📋 List mode</button>
@@ -195,7 +198,7 @@
   </div>
 
   <div class="method">
-    <b>How this works:</b> this page calls the free, public Open-Meteo forecast API directly from your browser — no API key, no server in between. For each of the next 7 days it looks only at the 8am–7pm window, scoring gusty wind, rain hours, and too-hot (&gt;27°C) or too-cold (&lt;10°C) temperatures. It's a live forecast, not a saved dataset, so later days in the week can still shift as the date gets closer — same as any weather app. Map mode's dot colour is each city's <b>average</b> score across the coming week; tap a dot for the day-by-day ranking. Forecast source: <a href="https://open-meteo.com" style="color:var(--ball)">open-meteo.com</a>.
+    <b>How this works:</b> this page calls the free, public Open-Meteo forecast API directly from your browser — no API key, no server in between. For each of the next 7 days it uses that city's actual sunrise-to-sunset window on that date (pulled from Open-Meteo, so it correctly shortens in winter and stretches in summer), scoring gusty wind, rain hours, and too-hot (&gt;27°C) or too-cold (&lt;10°C) temperatures within that window. It's a live forecast, not a saved dataset, so later days in the week can still shift as the date gets closer — same as any weather app. Map mode's dot colour is each city's <b>average</b> score across the coming week; tap a dot for the day-by-day ranking. Forecast source: <a href="https://open-meteo.com" style="color:var(--ball)">open-meteo.com</a>.
   </div>
 </div>
 
@@ -323,6 +326,12 @@ function bestWindow(hours){
   return { scored, window: best };
 }
 
+function dynamicHourLabels(startHour, endHour){
+  const span = endHour - startHour;
+  const points = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(startHour + f*span));
+  return points.map(h => hourLabel(h));
+}
+
 function buildDayCard(d, i){
   const tags = tagsFor(d, d.score);
   const { scored, window } = bestWindow(d.hours);
@@ -330,6 +339,11 @@ function buildDayCard(d, i){
     ? `Best hour to play: ${hourLabel(window.start)}`
     : `Best window to play: ${hourLabel(window.start)}–${hourLabel(window.end)}`;
   const fallbackNote = window.fallback ? ` <span class="dim">(nothing great today — least-bad hour shown)</span>` : ` <span class="dim">(avg score ${Math.round(window.avg)})</span>`;
+  const daylightNote = d.sunrise && d.sunset ? `<span class="dim">Daylight ${d.sunrise}–${d.sunset}</span>` : '';
+  const labels = dynamicHourLabels(d.startHour, d.endHour);
+  const dayMin = Math.min(...scored.map(h => h.score));
+  const dayMax = Math.max(...scored.map(h => h.score));
+  const relColor = score => colorFromT(dayMax > dayMin ? (score - dayMin) / (dayMax - dayMin) : 1);
 
   const wrap = document.createElement('div');
   wrap.className = 'card-wrap';
@@ -360,8 +374,10 @@ function buildDayCard(d, i){
   detail.innerHTML = `
     <div class="hour-detail-inner">
       <div class="best-window">${windowText}${fallbackNote}</div>
-      <div class="hour-strip">${scored.map(h => `<div class="hour-tick ${h.hour>=window.start && h.hour<=window.end ? 'in-window':''}" style="background:${gradientColor(h.score)}" title="${hourLabel(h.hour)} — score ${h.score}"></div>`).join('')}</div>
-      <div class="hour-labels"><span>8am</span><span>11am</span><span>2pm</span><span>5pm</span><span>7pm</span></div>
+      <div class="hour-strip">${scored.map(h => `<div class="hour-tick ${h.hour>=window.start && h.hour<=window.end ? 'in-window':''}" style="background:${relColor(h.score)}" title="${hourLabel(h.hour)} — score ${h.score}"></div>`).join('')}</div>
+      <div class="hour-labels"><span>${labels[0]}</span><span>${labels[1]}</span><span>${labels[2]}</span><span>${labels[3]}</span><span>${labels[4]}</span></div>
+      ${daylightNote ? `<div class="daylight-note">${daylightNote}</div>` : ''}
+      <div class="scale-note dim">Colours here are relative to this day (darkest = this day's worst hour, brightest = its best) — not the 0–100 score used elsewhere.</div>
     </div>
   `;
 
@@ -371,9 +387,16 @@ function buildDayCard(d, i){
   return wrap;
 }
 
+function formatClock(isoStr){
+  const h = Number(isoStr.slice(11,13)), m = isoStr.slice(14,16);
+  const period = h < 12 ? 'am' : 'pm';
+  let hh = h % 12; if(hh === 0) hh = 12;
+  return `${hh}:${m}${period}`;
+}
+
 async function fetchForecast(city){
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}` +
-    `&daily=temperature_2m_max,temperature_2m_min` +
+    `&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset` +
     `&hourly=temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,precipitation_probability` +
     `&timezone=Europe%2FLondon&forecast_days=7&wind_speed_unit=mph&precipitation_unit=mm`;
 
@@ -384,6 +407,8 @@ async function fetchForecast(city){
   const dailyDates = data.daily.time;
   const tmaxArr = data.daily.temperature_2m_max;
   const tminArr = data.daily.temperature_2m_min;
+  const sunriseArr = data.daily.sunrise;
+  const sunsetArr = data.daily.sunset;
 
   const hTime = data.hourly.time;
   const hTemp = data.hourly.temperature_2m;
@@ -393,12 +418,19 @@ async function fetchForecast(city){
   const hPrecipProb = data.hourly.precipitation_probability;
 
   return dailyDates.map((date, i) => {
+    // real daylight window for this city, on this date — varies by season, not a fixed guess
+    let startHour = 8, endHour = 19;
+    if(sunriseArr && sunriseArr[i] && sunsetArr && sunsetArr[i]){
+      startHour = Math.max(0, Math.min(23, Number(sunriseArr[i].slice(11,13))));
+      endHour = Math.max(startHour, Math.min(23, Number(sunsetArr[i].slice(11,13))));
+    }
+
     let windSum=0, windCount=0, gustMax=0, rainHours=0, rainProbMax=0;
     const hours = [];
     for(let h=0; h<hTime.length; h++){
       if(!hTime[h].startsWith(date)) continue;
       const hour = Number(hTime[h].slice(11,13));
-      if(hour < 8 || hour > 19) continue;
+      if(hour < startHour || hour > endHour) continue;
       windSum += hWind[h]; windCount++;
       if(hGust[h] > gustMax) gustMax = hGust[h];
       if(hPrecip[h] > 0.1) rainHours++;
@@ -414,6 +446,9 @@ async function fetchForecast(city){
       gust: Math.round(gustMax),
       rain_chance: Math.round(rainProbMax),
       rain_hours: rainHours,
+      startHour, endHour,
+      sunrise: sunriseArr && sunriseArr[i] ? formatClock(sunriseArr[i]) : null,
+      sunset: sunsetArr && sunsetArr[i] ? formatClock(sunsetArr[i]) : null,
       hours
     };
   });
@@ -482,8 +517,8 @@ mapSvg.appendChild(zoomGroup);
 zoomGroup.appendChild(svgEl('path',{d:polyPath(COAST_GB), class:'land'}));
 zoomGroup.appendChild(svgEl('path',{d:polyPath(COAST_NI), class:'land'}));
 
-function gradientColor(score){
-  const t = Math.max(0, Math.min(1, score/100));
+function colorFromT(t){
+  t = Math.max(0, Math.min(1, t));
   const stops = [[0.00,[91,58,52]],[0.25,[169,99,60]],[0.50,[201,162,39]],[0.75,[156,181,58]],[1.00,[215,230,85]]];
   for(let i=0;i<stops.length-1;i++){
     const [t0,c0]=stops[i], [t1,c1]=stops[i+1];
@@ -494,6 +529,7 @@ function gradientColor(score){
   }
   return `rgb(215,230,85)`;
 }
+function gradientColor(score){ return colorFromT(score/100); }
 
 const cityCache = {}; // name -> {days, avgScore} or {error:true}
 const markerParts = {};
