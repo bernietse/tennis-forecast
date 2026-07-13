@@ -52,7 +52,9 @@
   .hero-sub{font-size:12px;color:rgba(244,241,232,0.7);margin-top:4px;}
 
   .cards{display:flex; flex-direction:column; gap:10px;}
-  .card{background:var(--pine); border:1px solid var(--line); border-radius:10px; padding:12px 14px; display:flex; align-items:center; gap:12px;}
+  .card-wrap{background:var(--pine); border:1px solid var(--line); border-radius:10px; overflow:hidden;}
+  .card{padding:12px 14px; display:flex; align-items:center; gap:12px; cursor:pointer; user-select:none;}
+  .card:active{background:rgba(215,230,85,0.06);}
   .card .rank{font-family:'Archivo Black',sans-serif; font-size:15px; width:26px; text-align:center; color:rgba(244,241,232,0.4); flex-shrink:0;}
   .card .score-dot{
     width:44px; height:44px; border-radius:50%; flex-shrink:0;
@@ -60,14 +62,28 @@
     font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:13px; color:var(--pine-deep);
   }
   .card .info{flex:1; min-width:0;}
-  .card .day-name{font-family:'Archivo Black',sans-serif; font-size:14.5px;}
-  .card .day-date{font-family:'IBM Plex Mono',monospace; font-size:10px; color:rgba(244,241,232,0.5); margin-bottom:4px;}
+  .date-row{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;}
+  .card .day-date-big{font-family:'Archivo Black',sans-serif; font-size:19px; color:var(--chalk); line-height:1.15;}
+  .countdown-badge{font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:700; padding:3px 10px; border-radius:10px; background:rgba(215,230,85,0.14); color:var(--ball); white-space:nowrap;}
+  .card .day-name-sub{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:rgba(244,241,232,0.5); margin:2px 0 6px;}
   .card .metrics{display:flex; gap:10px; flex-wrap:wrap; font-family:'IBM Plex Mono',monospace; font-size:11px; color:rgba(244,241,232,0.75);}
   .card .metrics span{white-space:nowrap;}
+  .card .chevron{margin-left:auto; flex-shrink:0; color:rgba(244,241,232,0.4); font-size:12px; transition:transform .2s ease;}
+  .card-wrap.open .chevron{transform:rotate(180deg);}
   .tags{display:flex; gap:5px; flex-wrap:wrap; margin-top:5px;}
   .tag{font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 7px; border-radius:10px; border:1px solid var(--line); color:rgba(244,241,232,0.75);}
   .tag.warn{border-color:rgba(224,110,90,0.5); color:#E2897A;}
   .tag.great{border-color:rgba(215,230,85,0.5); color:var(--ball);}
+
+  .hour-detail{max-height:0; overflow:hidden; transition:max-height .25s ease; border-top:1px solid transparent;}
+  .card-wrap.open .hour-detail{max-height:220px; border-top:1px solid var(--line);}
+  .hour-detail-inner{padding:12px 14px 14px;}
+  .best-window{font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--ball); margin-bottom:10px; font-weight:600;}
+  .best-window .dim{color:rgba(244,241,232,0.55); font-weight:400;}
+  .hour-strip{display:flex; gap:2px; margin-bottom:4px;}
+  .hour-tick{flex:1; height:26px; border-radius:3px; position:relative;}
+  .hour-tick.in-window{outline:2px solid var(--chalk); outline-offset:-2px;}
+  .hour-labels{display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:9px; color:rgba(244,241,232,0.45); margin-top:4px;}
 
   .method{font-size:11px; line-height:1.6; color:rgba(244,241,232,0.5); border-top:1px solid var(--line); margin-top:22px; padding-top:14px;}
   .method b{color:rgba(244,241,232,0.75);}
@@ -129,6 +145,7 @@
   .map-sheet .sheet-title{font-family:'Archivo Black',sans-serif; font-size:16px; margin-bottom:10px; padding-right:20px;}
   .map-sheet .cards{gap:8px;}
   .map-sheet .card{padding:9px 11px;}
+  .map-sheet .day-date-big{font-size:16px;}
 </style>
 </head>
 <body>
@@ -254,10 +271,110 @@ function dayNameFrom(dateStr){
   return d.toLocaleDateString('en-GB', { weekday: 'short' });
 }
 
+function formatDateBig(dateStr){
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function countdownFor(dateStr){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(dateStr + 'T00:00:00');
+  const diff = Math.round((target - today) / 86400000);
+  if(diff <= 0) return 'Today';
+  if(diff === 1) return 'Tomorrow';
+  return `In ${diff} days`;
+}
+
+function hourLabel(h){
+  const period = h < 12 ? 'am' : 'pm';
+  let hh = h % 12; if(hh === 0) hh = 12;
+  return `${hh}${period}`;
+}
+
+function hourScore(r){
+  let score = 100;
+  if(r.temp < 8) score -= (8 - r.temp) * 6;
+  else if(r.temp < 14) score -= (14 - r.temp) * 2.5;
+  if(r.temp > 28) score -= (r.temp - 28) * 5;
+  else if(r.temp > 24) score -= (r.temp - 24) * 1.5;
+  if(r.gust > 20) score -= (r.gust - 20) * 2.2;
+  else if(r.wind > 12) score -= (r.wind - 12) * 1.2;
+  if(r.precip > 0.1) score -= 35;
+  score -= Math.max(0, r.precipProb - 30) * 0.3;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function bestWindow(hours){
+  const scored = hours.map(h => ({...h, score: hourScore(h)}));
+  let best = null, i = 0;
+  while(i < scored.length){
+    if(scored[i].score >= 60){
+      let j = i, sum = 0, cnt = 0;
+      while(j < scored.length && scored[j].score >= 60){ sum += scored[j].score; cnt++; j++; }
+      const run = { start: scored[i].hour, end: scored[j-1].hour, avg: sum/cnt, len: cnt };
+      if(!best || run.avg > best.avg || (run.avg === best.avg && run.len > best.len)) best = run;
+      i = j;
+    } else i++;
+  }
+  if(!best){
+    const top = scored.reduce((a,b) => b.score > a.score ? b : a, scored[0]);
+    best = { start: top.hour, end: top.hour, avg: top.score, len: 1, fallback: true };
+  }
+  return { scored, window: best };
+}
+
+function buildDayCard(d, i){
+  const tags = tagsFor(d, d.score);
+  const { scored, window } = bestWindow(d.hours);
+  const windowText = window.start === window.end
+    ? `Best hour to play: ${hourLabel(window.start)}`
+    : `Best window to play: ${hourLabel(window.start)}–${hourLabel(window.end)}`;
+  const fallbackNote = window.fallback ? ` <span class="dim">(nothing great today — least-bad hour shown)</span>` : ` <span class="dim">(avg score ${Math.round(window.avg)})</span>`;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'card-wrap';
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="rank">${i+1}</div>
+    <div class="score-dot" style="background:${colorFor(d.score)}">${d.score}</div>
+    <div class="info">
+      <div class="date-row">
+        <span class="day-date-big">${formatDateBig(d.date)}</span>
+        <span class="countdown-badge">${countdownFor(d.date)}</span>
+      </div>
+      <div class="day-name-sub">${d.day}</div>
+      <div class="metrics">
+        <span>🌡 ${d.tmin}–${d.tmax}°C</span>
+        <span>💨 ${d.wind}mph (gust ${d.gust})</span>
+        <span>🌧 ${d.rain_hours}h / ${d.rain_chance}%</span>
+      </div>
+      <div class="tags">${tags.map(t=>`<span class="tag ${t.warn?'warn':''} ${t.great?'great':''}">${t.t}</span>`).join('')}</div>
+    </div>
+    <div class="chevron">▾</div>
+  `;
+
+  const detail = document.createElement('div');
+  detail.className = 'hour-detail';
+  detail.innerHTML = `
+    <div class="hour-detail-inner">
+      <div class="best-window">${windowText}${fallbackNote}</div>
+      <div class="hour-strip">${scored.map(h => `<div class="hour-tick ${h.hour>=window.start && h.hour<=window.end ? 'in-window':''}" style="background:${gradientColor(h.score)}" title="${hourLabel(h.hour)} — score ${h.score}"></div>`).join('')}</div>
+      <div class="hour-labels"><span>8am</span><span>11am</span><span>2pm</span><span>5pm</span><span>7pm</span></div>
+    </div>
+  `;
+
+  card.addEventListener('click', () => wrap.classList.toggle('open'));
+  wrap.appendChild(card);
+  wrap.appendChild(detail);
+  return wrap;
+}
+
 async function fetchForecast(city){
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}` +
     `&daily=temperature_2m_max,temperature_2m_min` +
-    `&hourly=precipitation,wind_speed_10m,wind_gusts_10m,precipitation_probability` +
+    `&hourly=temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,precipitation_probability` +
     `&timezone=Europe%2FLondon&forecast_days=7&wind_speed_unit=mph&precipitation_unit=mm`;
 
   const res = await fetch(url);
@@ -269,6 +386,7 @@ async function fetchForecast(city){
   const tminArr = data.daily.temperature_2m_min;
 
   const hTime = data.hourly.time;
+  const hTemp = data.hourly.temperature_2m;
   const hWind = data.hourly.wind_speed_10m;
   const hGust = data.hourly.wind_gusts_10m;
   const hPrecip = data.hourly.precipitation;
@@ -276,6 +394,7 @@ async function fetchForecast(city){
 
   return dailyDates.map((date, i) => {
     let windSum=0, windCount=0, gustMax=0, rainHours=0, rainProbMax=0;
+    const hours = [];
     for(let h=0; h<hTime.length; h++){
       if(!hTime[h].startsWith(date)) continue;
       const hour = Number(hTime[h].slice(11,13));
@@ -284,6 +403,7 @@ async function fetchForecast(city){
       if(hGust[h] > gustMax) gustMax = hGust[h];
       if(hPrecip[h] > 0.1) rainHours++;
       if(hPrecipProb[h] > rainProbMax) rainProbMax = hPrecipProb[h];
+      hours.push({ hour, temp: hTemp[h], wind: hWind[h], gust: hGust[h], precip: hPrecip[h], precipProb: hPrecipProb[h] });
     }
     return {
       date,
@@ -293,7 +413,8 @@ async function fetchForecast(city){
       wind: Math.round(windCount ? windSum/windCount : 0),
       gust: Math.round(gustMax),
       rain_chance: Math.round(rainProbMax),
-      rain_hours: rainHours
+      rain_hours: rainHours,
+      hours
     };
   });
 }
@@ -309,26 +430,7 @@ function render(days, city){
   heroEl.classList.add('visible');
 
   cardsEl.innerHTML = '';
-  sorted.forEach((d, i) => {
-    const tags = tagsFor(d, d.score);
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <div class="rank">${i+1}</div>
-      <div class="score-dot" style="background:${colorFor(d.score)}">${d.score}</div>
-      <div class="info">
-        <div class="day-name">${d.day}</div>
-        <div class="day-date">${d.date}</div>
-        <div class="metrics">
-          <span>🌡 ${d.tmin}–${d.tmax}°C</span>
-          <span>💨 ${d.wind}mph (gust ${d.gust})</span>
-          <span>🌧 ${d.rain_hours}h / ${d.rain_chance}%</span>
-        </div>
-        <div class="tags">${tags.map(t=>`<span class="tag ${t.warn?'warn':''} ${t.great?'great':''}">${t.t}</span>`).join('')}</div>
-      </div>
-    `;
-    cardsEl.appendChild(card);
-  });
+  sorted.forEach((d, i) => cardsEl.appendChild(buildDayCard(d, i)));
 }
 
 async function runForecast(){
@@ -423,26 +525,7 @@ function renderMapSheet(cityName){
   }
   const sorted = [...data.days].sort((a,b)=>b.score-a.score);
   cardsWrap.innerHTML = '';
-  sorted.forEach((d,i)=>{
-    const tags = tagsFor(d, d.score);
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <div class="rank">${i+1}</div>
-      <div class="score-dot" style="background:${colorFor(d.score)}">${d.score}</div>
-      <div class="info">
-        <div class="day-name">${d.day}</div>
-        <div class="day-date">${d.date}</div>
-        <div class="metrics">
-          <span>🌡 ${d.tmin}–${d.tmax}°C</span>
-          <span>💨 ${d.wind}mph (gust ${d.gust})</span>
-          <span>🌧 ${d.rain_hours}h / ${d.rain_chance}%</span>
-        </div>
-        <div class="tags">${tags.map(t=>`<span class="tag ${t.warn?'warn':''} ${t.great?'great':''}">${t.t}</span>`).join('')}</div>
-      </div>
-    `;
-    cardsWrap.appendChild(card);
-  });
+  sorted.forEach((d,i) => cardsWrap.appendChild(buildDayCard(d, i)));
   sheet.classList.add('visible');
 }
 
